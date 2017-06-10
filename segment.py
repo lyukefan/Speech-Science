@@ -1,11 +1,6 @@
 import librosa as rosa
 import numpy as np
-
-# WAV_FILE_PATH = 'data/audio.wav'
-WAV_FILE_PATH = 'data/short.wav'
-OUTPATH = 'data/segmented/'
-SILENCE_THRESHOLD = 42 # dB
-MINIMUN_SEGMENT_DURATION = 0.5 # sec
+from config import *
 
 def write_wav(out_path, S, sr):
     maxv = np.iinfo(np.int16).max
@@ -31,9 +26,9 @@ def segment(wav_file):
         max_len = max(duration, max_len)
         min_len = min(duration, min_len)
         if duration/sr > MINIMUN_SEGMENT_DURATION:
-            write_wav('%s%d.wav'%(OUTPATH, i), wav[intervals[i][0]:intervals[i][1]], sr)
+            write_wav('%s%d.wav'%(SEGMENTED_PATH, i), wav[intervals[i][0]:intervals[i][1]], sr)
         else:
-            write_wav('%s_%d.wav'%(OUTPATH, i), wav[intervals[i][0]:intervals[i][1]], sr)
+            write_wav('%s_%d.wav'%(SEGMENTED_PATH, i), wav[intervals[i][0]:intervals[i][1]], sr)
     
     print('divided into %d segments, max_length=%fs, min_length=%fs, avg=%fs'
              % (n_intervals, max_len/sr, min_len/sr, n_samples/sr/n_intervals))
