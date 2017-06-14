@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from config import *
 
 def extract_feature(wav_segment, sr):
-    mfccs = rosa.feature.mfcc(y=wav_segment[0:sr], sr=sr, n_mfcc=20)
+    mfccs = rosa.feature.mfcc(y=wav_segment[0:sr], sr=sr, n_mfcc=30)
     # mfccs: (N, T)
     mfcc_means = np.mean(mfccs, axis=1)
     mfcc_vars = np.std(mfccs, axis=1)
@@ -22,16 +22,16 @@ def compare_signal(x, y):
     print(difference.shape)
     cost_table = np.linalg.norm(difference, axis=0)
     print(cost_table.shape)
-    paths = segmental_DTW(cost_table, R=5)
+    paths = segmental_DTW(cost_table, R=3)
     _visualize_paths(cost_table, paths)
-    plt.matshow(cost_table)
-    plt.show()
+    # plt.matshow(cost_table)
+    # plt.show()
     
     # path refinement
     for key, path in paths.items():
         # using <s1, s2, ..., sn> notations as in the paper
         S = np.array([cost_table[coord[0], coord[1]] for coord in path])
-        (refined_path_start, refined_path_end) = LCMA(S, L=10)
+        (refined_path_start, refined_path_end) = LCMA(S, L=25)
         paths[key] = paths[key][refined_path_start:refined_path_end]
 
     _visualize_paths(cost_table, paths)
@@ -158,9 +158,12 @@ def LCMA(S, L):
     return minimum_pair
 
 def _compare_test():
-    wav1, sr1 = rosa.core.load(SEGMENTED_PATH+'1.wav')
-    wav2, sr2 = rosa.core.load(SEGMENTED_PATH+'2.wav')
-    mfcc1, mfcc2 = extract_feature(wav1, sr1), extract_feature(wav1, sr2)
+    wav1, sr1 = rosa.core.load(SEGMENTED_PATH+'32.wav')
+    wav2, sr2 = rosa.core.load(SEGMENTED_PATH+'33.wav')
+    mfcc1, mfcc2 = extract_feature(wav1, sr1), extract_feature(wav2, sr2)
+    plt.matshow(mfcc1)
+    plt.matshow(mfcc2)
+    plt.show()
     compare_signal(mfcc1, mfcc2)
 
 def _visualize_paths(cost_table, paths):
