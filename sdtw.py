@@ -2,6 +2,9 @@ import numpy as np
 import librosa as rosa
 import matplotlib.pyplot as plt
 from config import *
+import pickle as pkl
+import os
+
 
 def extract_feature(wav_segment, sr):
     mfccs = rosa.feature.mfcc(y=wav_segment[0:sr], sr=sr, n_mfcc=30)
@@ -13,28 +16,47 @@ def extract_feature(wav_segment, sr):
     normalized_mfccs = whitened_mfccs / whitened_mfcc_norms[None, :]
     return normalized_mfccs
 
-def dump_feature(name, feature):
-    pass
+def dump_feature():
+    wav_files = os.listdir(SEGMENTED_PATH)
+    for wav_file in wav_files:
+        wav, sr = rosa.load(SEGMENTED_PATH+wav_file, sr=22050)
+        mfcc = extract_feature(wav, sr)
+        with open(MFCC_PATH + wav_file.split('.')[0] + '.pkl', 'wb') as f:
+            pkl.dump(mfcc, f)
+
+def load_feature():
+    n_pkls = len(os.listdir(MFCC_PATH))
+    segments = []
+    for i in range(n_pkls):
+        pkl_filename = '%s%d.pkl' % (MFCC_PATH, i)
+        with open(pkl_filename, 'rb') as f:
+            segments += [pkl.load(f)]
+    
+    return segments
 
 def compare_signal(x, y):
     # x and y are [n_mfcc, n_time_samples] arrays
     difference = x[:, :, None] - y[:, None, :]
-    print(difference.shape)
+    # cost[i, j] = norm(x[i] - y[j])
     cost_table = np.linalg.norm(difference, axis=0)
-    print(cost_table.shape)
     paths = segmental_DTW(cost_table, R=3)
-    _visualize_paths(cost_table, paths)
-    # plt.matshow(cost_table)
-    # plt.show()
-    
+    # _visualize_paths(cost_table, paths)
     # path refinement
+    pop_keys = []
     for key, path in paths.items():
         # using <s1, s2, ..., sn> notations as in the paper
         S = np.array([cost_table[coord[0], coord[1]] for coord in path])
-        (refined_path_start, refined_path_end) = LCMA(S, L=25)
-        paths[key] = paths[key][refined_path_start:refined_path_end]
+        refine_ret = LCMA(S, L=25)
+        if refine_ret != None:
+            (refined_path_start, refined_path_end), average_distortion = refine_ret
+            paths[key] = (paths[key][refined_path_start:refined_path_end], average_distortion)
+        else:
+            pop_keys += [key]
+    for key in pop_keys:
+        paths.pop(key)
 
-    _visualize_paths(cost_table, paths)
+    # _visualize_paths(cost_table, paths, refined=True)
+    return paths
 
 # returns several paths for future refinement (done by LCMA)
 # assuming R >= 1
@@ -146,7 +168,7 @@ def LCMA(S, L):
     n_samples = S.shape[0]
     minimum_pair = (-1, -1)
     if n_samples < L:
-        return minimum_pair
+        return None
     current_minimum = 1e10
     # l < 2L-1, see [27], lemma 7
     for l in range(L, L*2):
@@ -155,7 +177,7 @@ def LCMA(S, L):
             if mean < current_minimum:
                 current_minimum = mean
                 minimum_pair = (cursor, cursor+l)
-    return minimum_pair
+    return minimum_pair, current_minimum
 
 def _compare_test():
     wav1, sr1 = rosa.core.load(SEGMENTED_PATH+'32.wav')
@@ -166,13 +188,20 @@ def _compare_test():
     plt.show()
     compare_signal(mfcc1, mfcc2)
 
-def _visualize_paths(cost_table, paths):
+def _visualize_paths(cost_table, paths, refined=False):
     cost_table_copy = np.copy(cost_table)
+    print(cost_table_copy.shape)
     for path in paths.values():
+        if refined:
+            path = path[0]
         for coord in path:
+            print(coord)
             cost_table_copy[coord[0], coord[1]] = 0
     plt.matshow(cost_table_copy)
     plt.show()
 
 if __name__ == '__main__':
-    _compare_test()
+    # _compare_test()
+    # dump_feature()
+    # s = load_feature()
+    pass

@@ -20,19 +20,25 @@ def segment(wav_file):
     n_samples = wav.shape[0]
     n_intervals = intervals.shape[0]
     max_len, min_len = 0, 36000 * sr
+    cnt = 0
     for i in range(n_intervals):
         start, end = intervals[i]
         duration = end - start
         max_len = max(duration, max_len)
         min_len = min(duration, min_len)
         if duration/sr > MINIMUN_SEGMENT_DURATION:
-            write_wav('%s%d.wav'%(SEGMENTED_PATH, i), wav[intervals[i][0]:intervals[i][1]], sr)
-        else:
-            write_wav('%s_%d.wav'%(SEGMENTED_PATH, i), wav[intervals[i][0]:intervals[i][1]], sr)
+            write_wav('%s%d.wav'%(SEGMENTED_PATH, cnt), wav[intervals[i][0]:intervals[i][1]], sr)
+            cnt += 1
     
     print('divided into %d segments, max_length=%fs, min_length=%fs, avg=%fs'
              % (n_intervals, max_len/sr, min_len/sr, n_samples/sr/n_intervals))
 
+import os
+def clean():
+    os.system('del ".\\data\\segmented\\*.wav" /Q')
+    os.system('del ".\\data\\mfcc_feature\\*" /Q')
+
 if __name__ == '__main__':
+    # clean()
     segment(WAV_FILE_PATH)
 
