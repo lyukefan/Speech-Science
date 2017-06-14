@@ -1,5 +1,6 @@
 import numpy as np
 import librosa as rosa
+import matplotlib.pyplot as plt
 from config import *
 
 def extract_feature(wav_segment, sr):
@@ -10,13 +11,30 @@ def extract_feature(wav_segment, sr):
     whitened_mfccs = (mfccs - mfcc_means[:, None]) / mfcc_vars[:, None]
     whitened_mfcc_norms = np.linalg.norm(whitened_mfccs, axis=0)
     normalized_mfccs = whitened_mfccs / whitened_mfcc_norms[None, :]
-    print(normalized_mfccs.shape, np.linalg.norm(normalized_mfccs, axis=0), 
-        np.mean(normalized_mfccs, axis=1),
-        np.std(normalized_mfccs, axis=1),
-        whitened_mfcc_norms)
+    return normalized_mfccs
 
 def dump_feature(name, feature):
     pass
+
+def compare_signal(x, y):
+    # x and y are [n_mfcc, n_time_samples] arrays
+    difference = x[:, :, None] - y[:, None, :]
+    print(difference.shape)
+    cost_table = np.linalg.norm(difference, axis=0)
+    print(cost_table.shape)
+    paths = segmental_DTW(cost_table, R=5)
+    _visualize_paths(cost_table, paths)
+    plt.matshow(cost_table)
+    plt.show()
+    
+    # path refinement
+    for key, path in paths.items():
+        # using <s1, s2, ..., sn> notations as in the paper
+        S = np.array([cost_table[coord[0], coord[1]] for coord in path])
+        (refined_path_start, refined_path_end) = LCMA(S, L=10)
+        paths[key] = paths[key][refined_path_start:refined_path_end]
+
+    _visualize_paths(cost_table, paths)
 
 # returns several paths for future refinement (done by LCMA)
 # assuming R >= 1
@@ -38,7 +56,7 @@ def segmental_DTW(cost_table, R):
     # for tracing back the paths
     last = np.zeros_like(cost_table)
 
-    print(reachable)
+    # print(reachable)
     
     DTW_table[0, 0] = cost_table[0, 0]
 
@@ -58,7 +76,7 @@ def segmental_DTW(cost_table, R):
         else:
             DTW_table[0, j] = DTW_table[0, j-1] + cost_table[0, j]
             last[0, j] = PJ
-    print(DTW_table)
+    # print(DTW_table)
 
 
     for i in range(1, m):
@@ -80,8 +98,8 @@ def segmental_DTW(cost_table, R):
                     min_prev = DTW_table[i,j-1]
                     last[i,j] = PJ
             DTW_table[i, j] = min_prev + cost_table[i, j]
-    print(last)
-    print(DTW_table)
+    # print(last)
+    # print(DTW_table)
 
     # reconstruct paths using last and DTW_table
     minimum_costs = { i:INFINITY for i in identifiers}
@@ -91,8 +109,8 @@ def segmental_DTW(cost_table, R):
         if DTW_table[i,j] < minimum_costs[region_identifiers[i,j]]:
             destinations[region_identifiers[i,j]] = (i, j)
             minimum_costs[region_identifiers[i,j]] = DTW_table[i,j]
-    print(region_identifiers)
-    print(destinations)
+    # print(region_identifiers)
+    # print(destinations)
 
     for r in paths.keys():
         cursor_x, cursor_y = destinations[r]
@@ -111,8 +129,8 @@ def segmental_DTW(cost_table, R):
                 assert False
         paths[r] = [start_point] + paths[r]
 
-    for k, v in paths.items():
-        print(k, v)
+    # for k, v in paths.items():
+    #     print(k, v)
     
     return paths
             
@@ -127,6 +145,8 @@ def _print_path(m, n, path):
 def LCMA(S, L):
     n_samples = S.shape[0]
     minimum_pair = (-1, -1)
+    if n_samples < L:
+        return minimum_pair
     current_minimum = 1e10
     # l < 2L-1, see [27], lemma 7
     for l in range(L, L*2):
@@ -137,14 +157,19 @@ def LCMA(S, L):
                 minimum_pair = (cursor, cursor+l)
     return minimum_pair
 
-if __name__ == '__main__':
-    # s = np.array([1,2,3,1,0,1,1,0,3])
-    # p = LCMA(s, 3)
-    # print(s[p[0]:p[1]])
-    # wav, sr = rosa.core.load(SEGMENTED_PATH + '4.wav')
-    # extract_feature(wav, sr)
+def _compare_test():
+    wav1, sr1 = rosa.core.load(SEGMENTED_PATH+'1.wav')
+    wav2, sr2 = rosa.core.load(SEGMENTED_PATH+'2.wav')
+    mfcc1, mfcc2 = extract_feature(wav1, sr1), extract_feature(wav1, sr2)
+    compare_signal(mfcc1, mfcc2)
 
-    cost_table = np.array([[2,3,4,5], [1,3,5,7],[2,4,1,3]])
-    cost_table = np.random.randint(1, high=10, size=(10,12))
-    print(cost_table)
-    segmental_DTW(cost_table, R=2)
+def _visualize_paths(cost_table, paths):
+    cost_table_copy = np.copy(cost_table)
+    for path in paths.values():
+        for coord in path:
+            cost_table_copy[coord[0], coord[1]] = 0
+    plt.matshow(cost_table_copy)
+    plt.show()
+
+if __name__ == '__main__':
+    _compare_test()
