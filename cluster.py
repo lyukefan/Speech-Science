@@ -6,44 +6,60 @@ from itertools import accumulate
 
 import numpy as np
 import scipy.sparse as sp
+import scipy
 import matplotlib.pyplot as plt
 
 # segments are a list of short mfcc feature - time sequences
-def extract_node(segments):
+def build_matrix(segments):
     n_segments = len(segments)
     segment_lengths = list(map(lambda s: s.shape[1], segments))
     accumulate_lengths = [0] + list(accumulate(segment_lengths))
     total_length = accumulate_lengths[-1]
 
-    print(total_length, accumulate_lengths)
+    # print(total_length, accumulate_lengths)
     
     # sparse matrix representation of the graph
     row, col, data = [], [], []
 
-
     similarity_scores = [np.zeros((seg.shape[1],)) for seg in segments]
     for i in range(n_segments):
+        print('I: fragment %d being matched against others' % i)
         for j in range(i+1, n_segments):
             paths = compare_signal(segments[i], segments[j])
-            # print(paths)
             for path, average_distortion in paths.values():
                 for coord in path:
-                    row += [convert_to_global_index(i, coord[0], accumulate_lengths)]
-                    col += [convert_to_global_index(j, coord[1], accumulate_lengths)]
-                    data += [similarity_score(average_distortion)]
+                    if average_distortion < THETA:
+                        row += [convert_to_global_index(i, coord[0], accumulate_lengths)]
+                        col += [convert_to_global_index(j, coord[1], accumulate_lengths)]
+                        data += [similarity_score(average_distortion)]
 
     similarity_coo = sp.coo_matrix((data, (row, col)), shape=(total_length, total_length))
     sim = similarity_coo.toarray()
     sim += np.transpose(sim)
     plt.matshow(sim[0:500, 0:500])
     plt.show()
-
+    print('I: matrix built')
     return similarity_coo, accumulate_lengths
+
+def build_graph(similarity_coo, accumulate_lengths):
+    # trying to implement eq. 10
+    # urrr, there is a subtle difference here.
+    similarity = similarity_coo.toarray()
+    sum_over_P = np.sum(similarity_coo.toarray() + np.transpose(similarity_coo.toarray()), axis=1)
+
+    print(sum_over_P.shape)
+    plt.plot(sum_over_P)
+    # plt.show()
+
+    # divide again
+    scores = [
+        sum_over_P[i:j] for i,j in zip(accumulate_lengths[:-1], accumulate_lengths[1:]) 
+    ]
 
     # instead of triangular averaing, we use gaussian for simplicity
     smoothed_similarity = [
         scipy.ndimage.filters.gaussian_filter(score, sigma=10, mode='nearest') 
-        for score in similarity_scores
+        for score in scores
     ]
 
     local_extremas = [
@@ -51,7 +67,24 @@ def extract_node(segments):
         for sim in smoothed_similarity
     ]
 
-    n_node = reduce(lambda x, y: x+y, map(len, local_extremas))
+    plt.plot(np.array(reduce(lambda l1, l2 : np.concatenate([l1, l2]), smoothed_similarity)))
+    plt.show()
+
+    nodes_global_index = reduce(
+        lambda l1, l2 : l1 + l2, 
+        map(lambda i, jl : [convert_to_global_index(i, j, segments_acc) for j in jl],
+            enumerate(local_extremas) 
+        )
+    )
+
+    n_nodes = reduce(lambda x, y: x+y, map(len, local_extremas))
+    edge_set = set()
+    for i in range(n_nodes):
+        for j in range(i+1, n_nodes):
+            if similarity[i, j] > 0:
+                edge_set.add((i, j, similarity[i, j]))
+
+    return n_nodes, edge_set
 
     # build edges
 
@@ -63,11 +96,8 @@ def convert_to_global_index(i, j, segments_acc):
 def similarity_score(average_distortion):
     return (THETA - average_distortion) / THETA
 
-def build_graph():
-    pass
-
 # E is represented by a set of 3-tuple (v1, v2, weight), 
-# v1 and v2 are integers in range(0, n_node) 
+# v1 and v2 are integers in range(0, n_nodes) 
 # should return a set of connect-component as described
 # in sect IV. B.
 
@@ -77,8 +107,12 @@ def build_graph():
 #     func(e)
 # you may also convert E to another data-structure first 
 # if you need to
-def cluster(n_node, E):
+def cluster(n_nodes, E):
     pass
 
 if __name__ == '__main__':
-    extract_node(load_feature())
+    V, E = build_graph(*build_matrix(load_feature()))
+
+    # examples of how cluster() will be called.
+    clusters = cluster(V, E)
+

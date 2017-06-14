@@ -7,7 +7,8 @@ import os
 
 
 def extract_feature(wav_segment, sr):
-    mfccs = rosa.feature.mfcc(y=wav_segment[0:sr], sr=sr, n_mfcc=30)
+    mfccs = rosa.feature.mfcc(y=wav_segment, sr=sr, n_mfcc=30)
+    # print(mfcc.shape)
     # mfccs: (N, T)
     mfcc_means = np.mean(mfccs, axis=1)
     mfcc_vars = np.std(mfccs, axis=1)
@@ -21,6 +22,7 @@ def dump_feature():
     for wav_file in wav_files:
         wav, sr = rosa.load(SEGMENTED_PATH+wav_file, sr=22050)
         mfcc = extract_feature(wav, sr)
+        print(wav_file, len(wav)/sr, mfcc.shape)
         with open(MFCC_PATH + wav_file.split('.')[0] + '.pkl', 'wb') as f:
             pkl.dump(mfcc, f)
 
@@ -31,7 +33,7 @@ def load_feature():
         pkl_filename = '%s%d.pkl' % (MFCC_PATH, i)
         with open(pkl_filename, 'rb') as f:
             segments += [pkl.load(f)]
-    
+    print('I: features loaded, %d fragments' % n_pkls)
     return segments
 
 def compare_signal(x, y):
@@ -39,14 +41,14 @@ def compare_signal(x, y):
     difference = x[:, :, None] - y[:, None, :]
     # cost[i, j] = norm(x[i] - y[j])
     cost_table = np.linalg.norm(difference, axis=0)
-    paths = segmental_DTW(cost_table, R=3)
+    paths = segmental_DTW(cost_table, R=R_CONSTANT)
     # _visualize_paths(cost_table, paths)
     # path refinement
     pop_keys = []
     for key, path in paths.items():
         # using <s1, s2, ..., sn> notations as in the paper
         S = np.array([cost_table[coord[0], coord[1]] for coord in path])
-        refine_ret = LCMA(S, L=25)
+        refine_ret = LCMA(S, L=L_CONSTANT)
         if refine_ret != None:
             (refined_path_start, refined_path_end), average_distortion = refine_ret
             paths[key] = (paths[key][refined_path_start:refined_path_end], average_distortion)
@@ -202,6 +204,8 @@ def _visualize_paths(cost_table, paths, refined=False):
 
 if __name__ == '__main__':
     # _compare_test()
-    # dump_feature()
-    # s = load_feature()
-    pass
+    dump_feature()
+    s = load_feature()
+    for _ in s:
+        print(_.shape)
+    
